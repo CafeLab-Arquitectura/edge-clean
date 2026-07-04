@@ -1,4 +1,4 @@
-import logging
+﻿import logging
 import threading
 import time
 
@@ -103,7 +103,7 @@ class SyncWorker:
         try:
             result = service.push_pending_readings()
             if result["pushed"]:
-                logger.info("Pushed %s reading(s) to backend", result["pushed"])
+                logger.info("Synced %s reading(s) via %s", result["pushed"], result.get("transport", "http"))
         except Exception as error:  # noqa: BLE001 - worker must never die
             logger.warning("Reading push cycle failed: %s", error)
 
@@ -119,3 +119,4 @@ class SyncWorker:
 
 # Shared singleton so app.py and the onboarding endpoint drive the same worker.
 worker = SyncWorker()
+

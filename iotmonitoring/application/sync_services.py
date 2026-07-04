@@ -1,4 +1,5 @@
-import logging
+﻿import logging
+import os
 
 from iam.infrastructure.repositories import DeviceRepository
 from iotmonitoring.domain.entities import StorageThresholds
@@ -7,61 +8,86 @@ from iotmonitoring.infrastructure.backend_client import (
     BackendClient,
     BackendRejectedError,
 )
+from iotmonitoring.infrastructure.mqtt_client import MqttTelemetryPublisher
 from iotmonitoring.infrastructure.repositories import (
     SensorReadingRepository,
     StorageThresholdsRepository,
 )
+from shared.infrastructure.config import BackendConfig, MqttConfig
 
 logger = logging.getLogger(__name__)
 
 
 class TelemetrySyncService:
-    """Orchestrates the edge <-> backend synchronization (outbox + threshold pull).
+    """Orchestrates edge synchronization through HTTP or MQTT.
 
-    The device-facing request path never calls this: readings are answered
-    locally and instantly. This service runs in the background and reconciles
-    the local SQLite outbox with the backend whenever connectivity is available.
+    SYNC_TRANSPORT=http preserves the existing direct API Gateway flow.
+    SYNC_TRANSPORT=mqtt publishes telemetry to Mosquitto; mqtt-bridge then
+    forwards it to the API Gateway.
     """
 
-    # Floor to avoid hammering the backend if a tiny value is configured.
     MIN_INTERVAL_SECONDS = 5
 
-    def __init__(self, backend_client: BackendClient | None = None):
-        self.backend_client = backend_client or BackendClient()
+    def __init__(
+        self,
+        backend_client: BackendClient | None = None,
+        mqtt_publisher: MqttTelemetryPublisher | None = None,
+        config: BackendConfig | None = None,
+    ):
+        self.config = config or BackendConfig.resolve()
+        self.backend_client = backend_client or BackendClient(self.config)
+        self.mqtt_publisher = mqtt_publisher or MqttTelemetryPublisher(MqttConfig.from_env())
         self.device_repository = DeviceRepository()
         self.reading_repository = SensorReadingRepository()
         self.thresholds_repository = StorageThresholdsRepository()
         self.threshold_service = StorageThresholdService()
-        # Latest sync cadence advertised by the backend (via the thresholds
-        # payload). None until a pull sees a value. The worker reads this.
         self.last_interval_seconds: int | None = None
+
+    def _fallback_coffee_lot_id(self) -> int | None:
+        raw_lot_id = os.environ.get("COFFEE_LOT_ID")
+        if raw_lot_id in (None, ""):
+            return None
+        try:
+            return int(str(raw_lot_id).strip())
+        except (TypeError, ValueError):
+            logger.warning("Ignoring non-numeric COFFEE_LOT_ID=%r", raw_lot_id)
+            return None
 
     def _coffee_lot_id_for(self, device_id: str) -> int | None:
         device = self.device_repository.find_by_id(device_id)
-        if device is None or device.lot_id is None:
-            return None
-        if str(device.lot_id).strip().lower() in {"", "null", "none"}:
-            return None
+        raw_lot_id = device.lot_id if device is not None else None
+
+        if raw_lot_id is None or str(raw_lot_id).strip().lower() in {"", "null", "none"}:
+            fallback = self._fallback_coffee_lot_id()
+            if fallback is not None:
+                logger.info("Using COFFEE_LOT_ID=%s for device %s", fallback, device_id)
+            return fallback
+
         try:
-            return int(device.lot_id)
+            return int(raw_lot_id)
         except (TypeError, ValueError):
+            fallback = self._fallback_coffee_lot_id()
+            if fallback is not None:
+                logger.warning(
+                    "Device %s has non-numeric lot_id (%r); using COFFEE_LOT_ID=%s",
+                    device_id,
+                    raw_lot_id,
+                    fallback,
+                )
+                return fallback
             logger.warning(
                 "Device %s has a non-numeric lot_id (%r); cannot map to coffeeLotId",
                 device_id,
-                device.lot_id,
+                raw_lot_id,
             )
             return None
 
     def push_pending_readings(self, batch_size: int = 50) -> dict:
-        """Forward unsynced readings to the backend (outbox drain).
-
-        Stops the batch on the first transient failure so the same rows are
-        retried next cycle. Permanently rejected rows (4xx) are marked synced
-        to avoid blocking the queue forever.
-        """
+        """Drain unsynced readings through HTTP or MQTT."""
         readings = self.reading_repository.find_unsynced(batch_size)
         pushed = 0
         skipped = 0
+        transport = self.config.sync_transport
 
         for reading in readings:
             coffee_lot_id = self._coffee_lot_id_for(reading.device_id)
@@ -70,15 +96,21 @@ class TelemetrySyncService:
                 continue
 
             try:
-                self.backend_client.post_telemetry(
-                    coffee_lot_id,
-                    reading.temperature,
-                    reading.humidity,
-                    reading.recorded_at,
-                )
+                if transport == "mqtt":
+                    self.mqtt_publisher.publish_telemetry(
+                        coffee_lot_id,
+                        reading.temperature,
+                        reading.humidity,
+                        reading.recorded_at,
+                    )
+                else:
+                    self.backend_client.post_telemetry(
+                        coffee_lot_id,
+                        reading.temperature,
+                        reading.humidity,
+                        reading.recorded_at,
+                    )
             except BackendRejectedError as error:
-                # e.g. coffee lot does not exist on the backend: retrying is
-                # pointless, so drop the row from the outbox.
                 logger.warning("Dropping reading %s (rejected): %s", reading.id, error)
                 self.reading_repository.mark_synced(reading.id)
                 skipped += 1
@@ -87,7 +119,12 @@ class TelemetrySyncService:
             self.reading_repository.mark_synced(reading.id)
             pushed += 1
 
-        return {"pushed": pushed, "skipped": skipped, "examined": len(readings)}
+        return {
+            "pushed": pushed,
+            "skipped": skipped,
+            "examined": len(readings),
+            "transport": transport,
+        }
 
     def pull_thresholds(self, device_id: str) -> StorageThresholds | None:
         """Pull the authoritative thresholds for a device and apply them locally."""
@@ -99,8 +136,6 @@ class TelemetrySyncService:
         if not payload:
             return None
 
-        # The backend may advertise how often the edge should re-pull. Capture
-        # it so the worker can adapt its cadence (configurable from the UI).
         raw_interval = payload.get("syncIntervalSeconds")
         if raw_interval is not None:
             try:
@@ -129,10 +164,14 @@ class TelemetrySyncService:
         return self.thresholds_repository.save_current(thresholds)
 
     def pull_all_thresholds(self) -> int:
+        if not (self.config.service_email and self.config.service_password):
+            return 0
+
         updated = 0
         for device in self.device_repository.find_all():
-            if device.lot_id is None:
+            if device.lot_id is None and self._fallback_coffee_lot_id() is None:
                 continue
             if self.pull_thresholds(device.device_id) is not None:
                 updated += 1
         return updated
+

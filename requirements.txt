@@ -3,3 +3,4 @@ python-dateutil==2.9.0.post0
 peewee==4.0.5
 requests~=2.32.3
 python-dotenv~=1.1.1
+paho-mqtt~=2.1.0
