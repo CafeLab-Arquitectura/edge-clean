@@ -17,10 +17,10 @@ MAX_PHYSICAL_TEMPERATURE = 80.0
 MIN_PHYSICAL_HUMIDITY = 0.0
 MAX_PHYSICAL_HUMIDITY = 100.0
 
-MIN_ALLOWED_THRESHOLD_TEMPERATURE = 10.0
-MAX_ALLOWED_THRESHOLD_TEMPERATURE = 30.0
-MIN_ALLOWED_THRESHOLD_HUMIDITY = 40.0
-MAX_ALLOWED_THRESHOLD_HUMIDITY = 80.0
+MIN_ALLOWED_THRESHOLD_TEMPERATURE = 0.0
+MAX_ALLOWED_THRESHOLD_TEMPERATURE = 150.0
+MIN_ALLOWED_THRESHOLD_HUMIDITY = 0.0
+MAX_ALLOWED_THRESHOLD_HUMIDITY = 150.0
 
 
 def _require_device_id(device_id: str) -> None:
@@ -98,14 +98,22 @@ class StorageThresholdService:
             <= max_temperature
             <= MAX_ALLOWED_THRESHOLD_TEMPERATURE
         ):
-            raise ValueError("temperature thresholds must be between 10 and 30 Celsius")
+            raise ValueError(
+                f"temperature thresholds must be between "
+                f"{MIN_ALLOWED_THRESHOLD_TEMPERATURE:g} and "
+                f"{MAX_ALLOWED_THRESHOLD_TEMPERATURE:g} Celsius"
+            )
         if not (
             MIN_ALLOWED_THRESHOLD_HUMIDITY
             <= min_humidity
             <= max_humidity
             <= MAX_ALLOWED_THRESHOLD_HUMIDITY
         ):
-            raise ValueError("humidity thresholds must be between 40 and 80 percent")
+            raise ValueError(
+                f"humidity thresholds must be between "
+                f"{MIN_ALLOWED_THRESHOLD_HUMIDITY:g} and "
+                f"{MAX_ALLOWED_THRESHOLD_HUMIDITY:g} percent"
+            )
 
         return StorageThresholds(
             device_id,

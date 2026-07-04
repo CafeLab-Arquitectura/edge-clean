@@ -15,10 +15,10 @@ from iotmonitoring.infrastructure.repositories import (
     StorageThresholdsRepository,
 )
 
-DEFAULT_MIN_TEMPERATURE = 18.0
-DEFAULT_MAX_TEMPERATURE = 22.0
-DEFAULT_MIN_HUMIDITY = 55.0
-DEFAULT_MAX_HUMIDITY = 65.0
+DEFAULT_MIN_TEMPERATURE = 0.0
+DEFAULT_MAX_TEMPERATURE = 150.0
+DEFAULT_MIN_HUMIDITY = 0.0
+DEFAULT_MAX_HUMIDITY = 150.0
 
 
 class IoTMonitoringApplicationService:
