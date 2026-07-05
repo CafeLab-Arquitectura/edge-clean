@@ -1,5 +1,4 @@
 ﻿import logging
-import os
 
 from iam.infrastructure.repositories import DeviceRepository
 from iotmonitoring.domain.entities import StorageThresholds
@@ -43,38 +42,26 @@ class TelemetrySyncService:
         self.threshold_service = StorageThresholdService()
         self.last_interval_seconds: int | None = None
 
-    def _fallback_coffee_lot_id(self) -> int | None:
-        raw_lot_id = os.environ.get("COFFEE_LOT_ID")
-        if raw_lot_id in (None, ""):
+    def _coffee_lot_id_for(self, device_id: str) -> int | None:
+        device = self.device_repository.find_by_id(device_id)
+        if device is None:
+            logger.warning(
+                "Device %s is not registered in onboarding; cannot map to coffeeLotId",
+                device_id,
+            )
             return None
+
+        raw_lot_id = device.lot_id
+        if raw_lot_id is None or str(raw_lot_id).strip().lower() in {"", "null", "none"}:
+            logger.warning(
+                "Device %s has no lot assigned in onboarding; skipping telemetry sync",
+                device_id,
+            )
+            return None
+
         try:
             return int(str(raw_lot_id).strip())
         except (TypeError, ValueError):
-            logger.warning("Ignoring non-numeric COFFEE_LOT_ID=%r", raw_lot_id)
-            return None
-
-    def _coffee_lot_id_for(self, device_id: str) -> int | None:
-        device = self.device_repository.find_by_id(device_id)
-        raw_lot_id = device.lot_id if device is not None else None
-
-        if raw_lot_id is None or str(raw_lot_id).strip().lower() in {"", "null", "none"}:
-            fallback = self._fallback_coffee_lot_id()
-            if fallback is not None:
-                logger.info("Using COFFEE_LOT_ID=%s for device %s", fallback, device_id)
-            return fallback
-
-        try:
-            return int(raw_lot_id)
-        except (TypeError, ValueError):
-            fallback = self._fallback_coffee_lot_id()
-            if fallback is not None:
-                logger.warning(
-                    "Device %s has non-numeric lot_id (%r); using COFFEE_LOT_ID=%s",
-                    device_id,
-                    raw_lot_id,
-                    fallback,
-                )
-                return fallback
             logger.warning(
                 "Device %s has a non-numeric lot_id (%r); cannot map to coffeeLotId",
                 device_id,
@@ -169,9 +156,10 @@ class TelemetrySyncService:
 
         updated = 0
         for device in self.device_repository.find_all():
-            if device.lot_id is None and self._fallback_coffee_lot_id() is None:
+            if device.lot_id is None:
                 continue
             if self.pull_thresholds(device.device_id) is not None:
                 updated += 1
         return updated
+
 
