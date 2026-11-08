@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 
 from iam.infrastructure.repositories import DeviceRepository
 from iotmonitoring.domain.entities import StorageThresholds
@@ -89,6 +89,8 @@ class TelemetrySyncService:
                         reading.temperature,
                         reading.humidity,
                         reading.recorded_at,
+                        device_id=reading.device_id,
+                        sequence=reading.sequence,
                     )
                 else:
                     self.backend_client.post_telemetry(
@@ -96,6 +98,8 @@ class TelemetrySyncService:
                         reading.temperature,
                         reading.humidity,
                         reading.recorded_at,
+                        device_id=reading.device_id,
+                        sequence=reading.sequence,
                     )
             except BackendRejectedError as error:
                 logger.warning("Dropping reading %s (rejected): %s", reading.id, error)

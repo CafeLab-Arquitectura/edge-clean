@@ -59,6 +59,7 @@ class SensorReadingService:
         humidity,
         recorded_at=None,
         id: int | None = None,
+        sequence: int = 1,
     ) -> SensorReading:
         _require_device_id(device_id)
         temperature = _to_float(temperature, "temperature")
@@ -69,7 +70,7 @@ class SensorReadingService:
         if not MIN_PHYSICAL_HUMIDITY <= humidity <= MAX_PHYSICAL_HUMIDITY:
             raise ValueError("humidity is outside the physical sensor range")
 
-        return SensorReading(device_id, temperature, humidity, _to_datetime(recorded_at), id)
+        return SensorReading(device_id, temperature, humidity, _to_datetime(recorded_at), id, sequence)
 
 
 class StorageThresholdService:
@@ -147,15 +148,13 @@ class StorageThresholdService:
 class StorageConditionService:
     @staticmethod
     def evaluate(reading: SensorReading, thresholds: StorageThresholds) -> str:
-        if (
+        temp_out_of_range = (
             reading.temperature > thresholds.max_temperature
-            or reading.humidity > thresholds.max_humidity
-        ):
+            or reading.temperature < thresholds.min_temperature
+        )
+        if reading.humidity > thresholds.max_humidity or temp_out_of_range:
             return STATUS_DANGER
-        if (
-            reading.temperature < thresholds.min_temperature
-            or reading.humidity < thresholds.min_humidity
-        ):
+        if reading.humidity < thresholds.min_humidity:
             return STATUS_WARNING
         return STATUS_OPTIMAL
 
@@ -163,6 +162,8 @@ class StorageConditionService:
     def actuator_command(reading: SensorReading, thresholds: StorageThresholds) -> str:
         if reading.humidity > thresholds.max_humidity:
             return ACTUATOR_ACTIVATE
+        if reading.humidity <= thresholds.max_humidity:
+            return ACTUATOR_DEACTIVATE
         return ACTUATOR_NONE
 
     @staticmethod
@@ -171,15 +172,10 @@ class StorageConditionService:
     ) -> tuple[bool, bool]:
         """Devuelve (humidity_alert, temperature_alert).
 
-        Cada bandera se activa cuando la variable esta fuera de rango, es decir
-        por encima del maximo o por debajo del minimo. El firmware usa estas
-        banderas para encender un actuador por variable (pin de humedad / pin de
-        temperatura) de forma independiente.
+        humidity_alert es True únicamente cuando reading.humidity > thresholds.max_humidity.
+        temperature_alert es True cuando la temperatura esta fuera de rango (< min o > max).
         """
-        humidity_alert = (
-            reading.humidity > thresholds.max_humidity
-            or reading.humidity < thresholds.min_humidity
-        )
+        humidity_alert = reading.humidity > thresholds.max_humidity
         temperature_alert = (
             reading.temperature > thresholds.max_temperature
             or reading.temperature < thresholds.min_temperature

@@ -4,6 +4,7 @@ from iam.infrastructure.repositories import DeviceRepository
 from iotmonitoring.domain.entities import ActuatorEvent, SensorReading, StorageThresholds
 from iotmonitoring.domain.services import (
     ACTUATOR_ACTIVATE,
+    ACTUATOR_DEACTIVATE,
     SensorReadingService,
     StorageConditionService,
     StorageThresholdService,
@@ -43,11 +44,14 @@ class IoTMonitoringApplicationService:
         if api_key is not None and not self.device_repository.find_by_id_and_api_key(device_id, api_key):
             raise ValueError("Device not found")
 
+        next_sequence = self.reading_repository.next_sequence_for_device(device_id)
+
         reading = self.reading_service.create_reading(
             device_id,
             temperature,
             humidity,
             recorded_at,
+            sequence=next_sequence,
         )
         saved_reading = self.reading_repository.save(reading)
         thresholds = self.get_current_thresholds(device_id)
@@ -61,6 +65,10 @@ class IoTMonitoringApplicationService:
         if actuator_command == ACTUATOR_ACTIVATE:
             actuator_event = self.actuator_event_repository.save(
                 self.actuator_event_service.activate(device_id, saved_reading.recorded_at)
+            )
+        elif actuator_command == ACTUATOR_DEACTIVATE:
+            actuator_event = self.actuator_event_repository.save(
+                self.actuator_event_service.deactivate(device_id, saved_reading.recorded_at)
             )
 
         return saved_reading, status, actuator_command, humidity_alert, temperature_alert, actuator_event

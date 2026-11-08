@@ -9,12 +9,14 @@ class SensorReading:
         humidity: float,
         recorded_at: datetime,
         id: int | None = None,
+        sequence: int | None = None,
     ):
         self.id = id
         self.device_id = device_id
         self.temperature = temperature
         self.humidity = humidity
         self.recorded_at = recorded_at
+        self.sequence = sequence
 
 
 class StorageThresholds:

@@ -1,4 +1,4 @@
-﻿import json
+import json
 import logging
 import threading
 from datetime import datetime, timezone
@@ -65,12 +65,24 @@ class MqttTelemetryPublisher:
             self._client = client
             return client
 
-    def publish_telemetry(self, coffee_lot_id: int, temperature, humidity, recorded_at) -> dict:
+    def publish_telemetry(
+        self,
+        coffee_lot_id: int,
+        temperature,
+        humidity,
+        recorded_at,
+        device_id: str | None = None,
+        sequence: int | None = None,
+    ) -> dict:
+        timestamp_str = _to_mqtt_timestamp(recorded_at)
         payload = {
             "coffeeLotId": int(coffee_lot_id),
             "temperature": float(temperature),
             "humidity": float(humidity),
-            "timestamp": _to_mqtt_timestamp(recorded_at),
+            "timestamp": timestamp_str,
+            "measuredAt": timestamp_str,
+            "sensorId": device_id or "UNKNOWN",
+            "sequence": int(sequence) if sequence is not None else 1,
         }
         message = json.dumps(payload, separators=(",", ":"))
         client = self._ensure_client()

@@ -56,7 +56,7 @@ static const uint8_t DHT_KIND     = DHT22;
 static const uint8_t HUMIDITY_ACTUATOR_PIN    = 18;  // p.ej. deshumidificador
 static const uint8_t TEMPERATURE_ACTUATOR_PIN = 19;  // p.ej. enfriador/calefactor
 
-static const unsigned long READ_INTERVAL_MS = 5000; // 5 s (< 2 min => sensor ONLINE)
+static const unsigned long READ_INTERVAL_MS = 60000; // 60 segundos
 // =====================================================================================
 
 DHT dht(DHT_PIN, DHT_KIND);
@@ -180,6 +180,17 @@ void sendReading(float temperature, float humidity) {
   body["deviceId"] = deviceId;
   body["temperature"] = temperature;
   body["humidity"] = humidity;
+
+  time_t nowSecs = time(nullptr);
+  struct tm timeinfo;
+  char timeStr[32];
+  if (gmtime_r(&nowSecs, &timeinfo) && nowSecs > 100000) {
+    strftime(timeStr, sizeof(timeStr), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
+    body["measured_at"] = timeStr;
+  } else {
+    snprintf(timeStr, sizeof(timeStr), "%lu", millis());
+    body["measured_at"] = timeStr;
+  }
   String payload;
   serializeJson(body, payload);
 
@@ -235,6 +246,8 @@ void setup() {
   }
   Serial.print("[wifi] conectado, IP ");
   Serial.println(WiFi.localIP());
+
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
 
   deviceId = computeDeviceId();
   Serial.print("[id] deviceId = ");

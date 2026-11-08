@@ -69,6 +69,7 @@ def _reading_resource(
         "deviceId": reading.device_id,
         "temperature": reading.temperature,
         "humidity": reading.humidity,
+        "sequence": getattr(reading, "sequence", 1),
         "status": status,
         "actuatorCommand": actuator_command,
         "humidityAlert": humidity_alert,
@@ -141,7 +142,7 @@ def register_reading():
             device_id,
             data["temperature"],
             data["humidity"],
-            data.get("recordedAt") or data.get("recorded_at"),
+            data.get("recordedAt") or data.get("recorded_at") or data.get("measured_at") or data.get("measuredAt"),
             request.headers.get("X-API-Key"),
         )
         # Wake the sync worker so this reading is pushed now, not on the next poll.

@@ -159,12 +159,24 @@ class BackendClient:
 
         return response
 
-    def post_telemetry(self, coffee_lot_id: int, temperature, humidity, recorded_at) -> dict:
+    def post_telemetry(
+        self,
+        coffee_lot_id: int,
+        temperature,
+        humidity,
+        recorded_at,
+        device_id: str | None = None,
+        sequence: int | None = None,
+    ) -> dict:
+        timestamp_str = _to_backend_timestamp(recorded_at)
         payload = {
             "coffeeLotId": coffee_lot_id,
             "temperature": temperature,
             "humidity": humidity,
-            "timestamp": _to_backend_timestamp(recorded_at),
+            "timestamp": timestamp_str,
+            "measuredAt": timestamp_str,
+            "sensorId": device_id or "UNKNOWN",
+            "sequence": sequence if sequence is not None else 1,
         }
         response = self._request("POST", "/api/v1/telemetry-records", json=payload)
 

@@ -66,6 +66,10 @@ def _ensure_outbox_columns():
         )
     if "synced_at" not in existing:
         db.execute_sql("ALTER TABLE sensor_readings ADD COLUMN synced_at DATETIME")
+    if "sequence" not in existing:
+        db.execute_sql(
+            "ALTER TABLE sensor_readings ADD COLUMN sequence INTEGER NOT NULL DEFAULT 1"
+        )
 
 if __name__ == "__main__":
     init_db()

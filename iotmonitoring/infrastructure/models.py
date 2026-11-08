@@ -1,4 +1,4 @@
-from peewee import AutoField, BooleanField, CharField, DateTimeField, FloatField
+from peewee import AutoField, BooleanField, CharField, DateTimeField, FloatField, IntegerField
 
 from shared.infrastructure.database import BaseModel
 
@@ -9,6 +9,7 @@ class SensorReadingModel(BaseModel):
     temperature = FloatField()
     humidity = FloatField()
     recorded_at = DateTimeField(index=True)
+    sequence = IntegerField(default=1, index=True)
     # Outbox flags for edge -> backend synchronization.
     is_synced = BooleanField(default=False, index=True)
     synced_at = DateTimeField(null=True)
