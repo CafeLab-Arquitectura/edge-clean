@@ -24,7 +24,9 @@ onboarding_api = Blueprint("onboarding_api", __name__)
 iam_service = IamApplicationService()
 reading_repository = SensorReadingRepository()
 
-DEFAULT_BACKEND_URL = "http://localhost:8080"
+DEFAULT_BACKEND_URL = os.environ.get(
+    "BACKEND_BASE_URL", "https://includes-glasses-instruments-antonio.trycloudflare.com"
+)
 
 
 def _normalize_lot_id(value) -> str | None:
@@ -196,7 +198,7 @@ ONBOARDING_HTML = """<!doctype html>
     <label>Contrasena</label>
     <input id="password" type="password" required>
     <label>URL del backend</label>
-    <input id="backendUrl" type="url" placeholder="http://192.168.1.100:8080">
+    <input id="backendUrl" type="url" placeholder="https://includes-glasses-instruments-antonio.trycloudflare.com">
     <button type="submit" class="full">Vincular</button>
   </form>
   <p id="msg" class="msg"></p>
