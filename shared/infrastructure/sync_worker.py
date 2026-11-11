@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import threading
 import time
 
@@ -29,17 +29,23 @@ class SyncWorker:
     def start(self) -> None:
         # Re-resolve on every start so credentials onboarded after boot
         # (via the edge login page) are picked up.
-        self.config = self._explicit_config or BackendConfig.resolve()
+        new_config = self._explicit_config or BackendConfig.resolve()
+        if self._thread is not None and self._thread.is_alive():
+            if self.config == new_config:
+                return
+            self.stop()
+            self._thread.join(timeout=2)
+
+        self.config = new_config
         if not self.config.sync_enabled:
             logger.info(
                 "Backend sync disabled (no BACKEND_SERVICE_EMAIL/PASSWORD); "
                 "running edge standalone"
             )
             return
-        if self._thread is not None and self._thread.is_alive():
-            return
 
         self._stop.clear()
+        self._wake.clear()
         self._thread = threading.Thread(
             target=self._run, name="edge-sync-worker", daemon=True
         )
@@ -65,7 +71,7 @@ class SyncWorker:
         # Imported lazily so the module graph stays clean and the DB is ready.
         from iotmonitoring.application.sync_services import TelemetrySyncService
 
-        service = TelemetrySyncService()
+        service = TelemetrySyncService(config=self.config)
         interval = self.config.sync_interval_seconds
         # Full reconcile once on startup (drain backlog + refresh thresholds).
         self._push(service)

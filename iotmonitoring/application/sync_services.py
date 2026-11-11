@@ -101,6 +101,17 @@ class TelemetrySyncService:
                         device_id=reading.device_id,
                         sequence=reading.sequence,
                     )
+                    try:
+                        self.mqtt_publisher.publish_telemetry(
+                            coffee_lot_id,
+                            reading.temperature,
+                            reading.humidity,
+                            reading.recorded_at,
+                            device_id=reading.device_id,
+                            sequence=reading.sequence,
+                        )
+                    except Exception as mqtt_err:
+                        logger.debug("MQTT mirror skipped: %s", mqtt_err)
             except BackendRejectedError as error:
                 logger.warning("Dropping reading %s (rejected): %s", reading.id, error)
                 self.reading_repository.mark_synced(reading.id)
