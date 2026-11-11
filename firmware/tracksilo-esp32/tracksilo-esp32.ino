@@ -19,7 +19,7 @@
 
 // ===================== CONFIGURACIÓN RED Y EDGE =====================
 // Credenciales del Hotspot iPhone
-static const char* DEMO_WIFI_SSID = "U202320083";
+static const char* DEMO_WIFI_SSID = "U2023";
 static const char* DEMO_WIFI_PASS = "kaletito";
 
 // IP de la MacBook en el Hotspot de iPhone (172.20.10.x)
@@ -29,7 +29,8 @@ static const uint16_t EDGE_PORT      = 5000;
 // false = conectar directo y usar Wi-Fi guardado. true = forzar portal de configuración.
 static const bool OPEN_SETUP_PORTAL  = false;
 
-static const char* DEVICE_ID_OVERRIDE = "";
+// ID del dispositivo configurado en edge-clean y asociado a lot_id=2
+static const char* DEVICE_ID_OVERRIDE = "tracksilo-001";
 static const char* DEVICE_PREFIX      = "esp32-";
 
 static const uint8_t DHT_PIN      = 15;               // Pin de datos DHT22
@@ -326,20 +327,20 @@ void setup() {
   digitalWrite(TEMPERATURE_ACTUATOR_PIN, LOW);
   dht.begin();
 
+  // 1) Conectar a Wi-Fi primero
+  setupWifiAndEdge();
+
+  // 2) Obtener deviceId (ahora que Wi-Fi esta activo)
   deviceId = computeDeviceId();
+  Serial.print("[id] deviceId = ");
+  Serial.println(deviceId);
+
   prefs.begin("tracksilo", false);
   apiKey = prefs.getString("apiKey", "");
   edgeHost = prefs.getString("edgeHost", EDGE_HOST_DEFAULT);
 
-  setupWifiAndEdge();
-
-  Serial.print("[id] deviceId = ");
-  Serial.println(deviceId);
-  if (apiKey.length() > 0) {
-    Serial.println("[id] apiKey cargada desde NVS");
-  } else if (WiFi.status() == WL_CONNECTED) {
-    announce();
-  }
+  // 3) Anunciarse al edge para validar y sincronizar la api_key oficial de tracksilo-001
+  announce();
 
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
   Serial.println("[setup] listo para capturar telemetria.");
