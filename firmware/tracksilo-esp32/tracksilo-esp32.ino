@@ -241,18 +241,26 @@ void setup() {
 
   // Conexión directa y automática al Hotspot
   Serial.printf("[wifi] conectando directamente a '%s'...\n", WIFI_SSID);
+  WiFi.disconnect(true); // Limpiar conexiones previas
+  delay(500);
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false); // Evita ahorro de energía en Wi-Fi para no perder conexión con iPhone
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
   unsigned long startAttempt = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 15000) {
+  // El Hotspot de iPhone suele tardar hasta 20-25s en negociar DHCP
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 25000) {
     delay(500);
     Serial.print(".");
   }
 
-  // Si no se pudo conectar en 15s, abre el portal cautivo "TrackSilo-Setup" como respaldo
+  // Si no se pudo conectar en 25s, resetea estado Wi-Fi y abre portal cautivo como respaldo
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("\n[wifi] no se pudo conectar al Hotspot; abriendo portal 'TrackSilo-Setup' de respaldo...");
+    WiFi.disconnect(true);
+    delay(1000);
     WiFiManager wm;
+    wm.setConfigPortalTimeout(180); // 3 minutos para configurar
     if (!wm.autoConnect("TrackSilo-Setup")) {
       Serial.println("[wifi] fallo de conexion; reiniciando...");
       delay(3000);
