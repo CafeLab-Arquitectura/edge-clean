@@ -36,17 +36,20 @@
 #include <DHT.h>
 
 // ===================== CONFIG (igual para todos los dispositivos) =====================
+// Credenciales WiFi directas para conexión automática (Hotspot)
+static const char* WIFI_SSID        = "U202320083";
+static const char* WIFI_PASSWORD    = "kaletito";
+
 // device_id = esp32-<mac> automáticamente. Para SIMULAR otro IoT en la misma
 // placa, pon aquí un id fijo (vacío = usar la MAC).
 static const char* DEVICE_ID_OVERRIDE = "";
 static const char* DEVICE_PREFIX      = "esp32-";
 
 // Descubrimiento del edge (en cascada): 1) servicio mDNS _cafelab._tcp,
-// 2) hostname mDNS, 3) IP fija de respaldo. El servicio mDNS es lo más fiable en
-// ESP32 (queryHost suele fallar); el edge lo anuncia vía Avahi en el Pi.
+// 2) hostname mDNS, 3) IP fija de respaldo.
 static const char* EDGE_SERVICE     = "cafelab";        // => _cafelab._tcp (avahi del Pi)
 static const char* EDGE_HOST        = "raspberrypi";    // hostname mDNS (sin ".local")
-static const char* EDGE_FALLBACK_IP = "10.47.64.145"; // respaldo si mDNS falla (deja vacío para solo-mDNS)
+static const char* EDGE_FALLBACK_IP = "172.20.10.3";    // IP de la MacBook en el Hotspot del iPhone
 static const uint16_t EDGE_PORT     = 5000;
 
 static const uint8_t DHT_PIN      = 15;               // dato del DHT22
@@ -236,15 +239,27 @@ void setup() {
   digitalWrite(TEMPERATURE_ACTUATOR_PIN, LOW);
   dht.begin();
 
-  // WiFiManager: conecta con WiFi guardado, o abre el portal "TrackSilo-Setup".
-  WiFiManager wm;
-  //wm.resetSettings(); // TEMPORAL: solo para volver a configurar WiFi
-  if (!wm.autoConnect("TrackSilo-Setup")) {
-    Serial.println("[wifi] fallo de conexion; reiniciando...");
-    delay(3000);
-    ESP.restart();
+  // Conexión directa y automática al Hotspot
+  Serial.printf("[wifi] conectando directamente a '%s'...\n", WIFI_SSID);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  unsigned long startAttempt = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 15000) {
+    delay(500);
+    Serial.print(".");
   }
-  Serial.print("[wifi] conectado, IP ");
+
+  // Si no se pudo conectar en 15s, abre el portal cautivo "TrackSilo-Setup" como respaldo
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("\n[wifi] no se pudo conectar al Hotspot; abriendo portal 'TrackSilo-Setup' de respaldo...");
+    WiFiManager wm;
+    if (!wm.autoConnect("TrackSilo-Setup")) {
+      Serial.println("[wifi] fallo de conexion; reiniciando...");
+      delay(3000);
+      ESP.restart();
+    }
+  }
+  Serial.print("\n[wifi] conectado exitosamente, IP asignada: ");
   Serial.println(WiFi.localIP());
 
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
