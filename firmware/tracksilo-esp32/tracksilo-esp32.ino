@@ -72,6 +72,20 @@ void resetWifiRadio() {
   delay(200);
 }
 
+void logVisibleNetworks() {
+  Serial.println("\n[wifi] escaneando redes 2.4 GHz disponibles...");
+  int count = WiFi.scanNetworks(false, true);
+  if (count <= 0) {
+    Serial.println("[wifi]   Ninguna red 2.4 GHz visible.");
+    Serial.println("[wifi]   Asegurate de tener en el iPhone: Ajustes > Compartir Internet > Maximizar compatibilidad = ON");
+  } else {
+    for (int i = 0; i < count && i < 15; i++) {
+      Serial.printf("[wifi]   Detectada red: '%s' (senal: %d dBm)\n", WiFi.SSID(i).c_str(), WiFi.RSSI(i));
+    }
+  }
+  WiFi.scanDelete();
+}
+
 bool connectWithSavedWifi(unsigned long timeoutMs = 90000,
                           const char* ssid = nullptr,
                           const char* pass = nullptr) {
@@ -82,7 +96,7 @@ bool connectWithSavedWifi(unsigned long timeoutMs = 90000,
   resetWifiRadio();
 
   if (ssid != nullptr && strlen(ssid) > 0) {
-    Serial.printf("[wifi] conectando a %s (hotspot iPhone, hasta %lus)...\n",
+    Serial.printf("[wifi] conectando a '%s' (hotspot iPhone, hasta %lus)...\n",
                   ssid, timeoutMs / 1000);
     WiFi.begin(ssid, pass != nullptr ? pass : "");
   } else {
@@ -92,6 +106,7 @@ bool connectWithSavedWifi(unsigned long timeoutMs = 90000,
   }
 
   unsigned long deadline = millis() + timeoutMs;
+  unsigned long lastAttemptAt = millis();
   wl_status_t lastStatus = WL_IDLE_STATUS;
 
   while (millis() < deadline) {
@@ -103,17 +118,19 @@ bool connectWithSavedWifi(unsigned long timeoutMs = 90000,
       return true;
     }
 
-    if (status == WL_CONNECT_FAILED || status == WL_NO_SSID_AVAIL) {
+    // Si falla conexion, no encuentra SSID, o queda desconectado por mas de 8s, reintenta
+    if (status == WL_CONNECT_FAILED || status == WL_NO_SSID_AVAIL || (status == WL_DISCONNECTED && millis() - lastAttemptAt > 8000)) {
       if (status != lastStatus) {
         if (status == WL_NO_SSID_AVAIL) {
           Serial.println("\n[wifi] status=1: red no encontrada (verifica 'Maximizar compatibilidad' en iPhone)");
         } else {
-          Serial.printf("\n[wifi] status=%d (reintentando...)\n", status);
+          Serial.printf("\n[wifi] status=%d (reintentando negociacion Wi-Fi...)\n", status);
         }
         lastStatus = status;
       }
       WiFi.disconnect(false);
-      delay(1500);
+      delay(1000);
+      lastAttemptAt = millis();
       if (ssid != nullptr && strlen(ssid) > 0) {
         WiFi.begin(ssid, pass != nullptr ? pass : "");
       } else {
@@ -153,12 +170,20 @@ void setupWifiAndEdge() {
     wm.resetSettings();
     connected = wm.startConfigPortal("TrackSilo-Setup");
   } else {
-    Serial.println("[wifi] 1) Buscando red guardada...");
-    connected = connectWithSavedWifi(45000);
+    // Escaneo previo para diagnosticar redes visibles en el monitor serie
+    logVisibleNetworks();
 
-    if (!connected && strlen(DEMO_WIFI_PASS) > 0) {
-      Serial.println("[wifi] 2) Probando credenciales directas DEMO_WIFI_SSID / PASS...");
-      connected = connectWithSavedWifi(90000, DEMO_WIFI_SSID, DEMO_WIFI_PASS);
+    Serial.println("[wifi] 1) Intentando conectar a 'U202320083'...");
+    connected = connectWithSavedWifi(45000, DEMO_WIFI_SSID, DEMO_WIFI_PASS);
+
+    if (!connected) {
+      Serial.println("[wifi] 2) Probando variante SSID 'U2023'...");
+      connected = connectWithSavedWifi(45000, "U2023", DEMO_WIFI_PASS);
+    }
+
+    if (!connected) {
+      Serial.println("[wifi] 3) Probando credenciales guardadas en NVS...");
+      connected = connectWithSavedWifi(30000);
     }
   }
 
@@ -176,7 +201,7 @@ void setupWifiAndEdge() {
 
     connected = wm.startConfigPortal("TrackSilo-Setup");
     if (!connected) {
-      connected = connectWithSavedWifi(90000, DEMO_WIFI_SSID, DEMO_WIFI_PASS);
+      connected = connectWithSavedWifi(45000, DEMO_WIFI_SSID, DEMO_WIFI_PASS);
     }
   }
 
